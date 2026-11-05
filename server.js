@@ -1,6 +1,5 @@
 const http = require('http');
 
-// Ek hi port par server chalega jo Render aur UptimeRobot ke liye 24x7 zinda rakhega
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.write("Double-Bot Security System is running 24x7!");
@@ -14,7 +13,7 @@ const PUBLIC_BOT_TOKEN = '9133978108:AAEAfzcrSJ9IHXqStjrPvYjDAEWsZiV5-qM';
 const MAIN_CHANNEL_ID = '-1004339756508'; 
 const DB_CHANNEL_ID = '-1003963018645'; 
 
-const MY_TELEGRAM_ID = 5850723556; // <-- Yahan apni asli Telegram Numeric ID daalein (jo @userinfobot se nikali thi)
+const MY_TELEGRAM_ID = 5850723556; // <-- Aapki verified Telegram Numeric ID
 
 const PUBLIC_BOT_USERNAME = 'ApkFileStorezbot'; 
 const SHORTENER_API = '0d5b84a85b367dce300ef3f2be81b302202e9803';
@@ -25,7 +24,7 @@ let publicLastUpdateId = 0;
 
 console.log("🤖 Double-Bot Security & Privacy System Chalu Ho Gaya Hai!");
 
-// --- ADMIN BOT KAA KAAM (Privacy Lock + Post Generator) ---
+// --- ADMIN BOT KAA KAAM ---
 async function pollAdmin() {
     try {
         const res = await fetch(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/getUpdates?offset=${adminLastUpdateId + 1}&timeout=30`);
@@ -46,17 +45,25 @@ async function processAdminMessage(msg) {
     const userId = msg.from.id;
     let text = msg.text || msg.caption || '';
 
-    // 🛡️ STRICT PRIVACY & SECURITY CHECK (Sirf Boss/Admin use kar sakta hai)
+    // 🛡️ Privacy Lock Check
     if (userId !== MY_TELEGRAM_ID) {
-        await sendMessage(ADMIN_BOT_TOKEN, chatId, "⛔ **Access Denied!**\n\nYeh ek private Admin Bot hai. Aapko ise use karne ki permission nahi hai.");
+        await sendMessage(ADMIN_BOT_TOKEN, chatId, "⛔ **Access Denied!**\n\nYeh ek private Admin Bot hai.");
         return;
     }
 
-    const tgLinkRegex = /https:\/\/t\.me\/(?:c\/\d+\/|[a-zA-Z0-9_]+\/)(\d+)/;
+    // 🔥 Fixed Regex jo private channel (t.me/c/...) aur normal links dono ko pakad lega
+    const tgLinkRegex = /https:\/\/t\.me\/(?:c\/(\d+)\/([^\s]+)|([a-zA-Z0-9_]+)\/(\d+))/;
     const match = text.match(tgLinkRegex);
 
     if (match) {
-        const fileMsgId = match[1]; 
+        // Message ID nikalne ka secure tarika (chahe private link ho ya public)
+        const fileMsgId = match[2] || match[4]; 
+        
+        if (!fileMsgId) {
+            sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ Link se Message ID extract nahi ho payi. Sahi link bhejein.");
+            return;
+        }
+
         const secretBotLink = `https://telegram.me/${PUBLIC_BOT_USERNAME.trim()}?start=${fileMsgId}`;
 
         try {
@@ -82,9 +89,11 @@ async function processAdminMessage(msg) {
                 } else {
                     sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ Main channel par post bhejte waqt error aaya.");
                 }
+            } else {
+                sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ ShrinkMe API error: Link short nahi ho paya.");
             }
         } catch (e) {
-            sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ Link convert karne mein error aaya.");
+            sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ Link convert karne mein network error aaya.");
         }
     } else {
         if (text === '/start') {
@@ -95,7 +104,7 @@ async function processAdminMessage(msg) {
     }
 }
 
-// --- PUBLIC BOT KAA KAAM (Sirf File Dene Ke Liye) ---
+// --- PUBLIC BOT KAA KAAM ---
 async function pollPublic() {
     try {
         const res = await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/getUpdates?offset=${publicLastUpdateId + 1}&timeout=30`);
@@ -132,7 +141,7 @@ async function processPublicMessage(msg) {
     }
 }
 
-// --- TELEGRAM HELPER APIs ---
+// --- TELEGRAM HELPER APIS ---
 async function sendMessage(token, chat_id, text, reply_markup = null) {
     const body = { chat_id, text, parse_mode: 'Markdown' };
     if (reply_markup) body.reply_markup = reply_markup;
