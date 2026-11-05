@@ -1,33 +1,116 @@
-// ====== 24x7 ALIVE WEB SERVER ======
 const http = require('http');
+
+// Ek hi port par server chalega jo Render aur UptimeRobot ke liye 24x7 zinda rakhega
 http.createServer((req, res) => {
-    res.write("Bot zinda hai aur 24x7 chal raha hai!");
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.write("Double-Bot Security System is running 24x7!");
     res.end();
-}).listen(8080);
+}).listen(process.env.PORT || 8080);
 
-// ====== PUBLIC BOT KI DETAILS ======
+// ================= APNI DETAILS YAHAN DALEIN =================
+const ADMIN_BOT_TOKEN = '8226983471:AAGrdGH8mO5IwJp54OS1v5ysbBKY64W6u4M'; 
 const PUBLIC_BOT_TOKEN = '9133978108:AAEAfzcrSJ9IHXqStjrPvYjDAEWsZiV5-qM'; 
+
+const MAIN_CHANNEL_ID = '-1004339756508'; 
 const DB_CHANNEL_ID = '-1003963018645'; 
-// ===================================
 
-let lastUpdateId = 0;
-console.log("🟢 24x7 Public File Bot chalu ho gaya (Auto-Delete ke sath)!");
+const MY_TELEGRAM_ID = 5850723556; // <-- Yahan apni asli Telegram Numeric ID daalein (jo @userinfobot se nikali thi)
 
-async function poll() {
+const PUBLIC_BOT_USERNAME = 'ApkFileStorezbot'; 
+const SHORTENER_API = '0d5b84a85b367dce300ef3f2be81b302202e9803';
+// ============================================================
+
+let adminLastUpdateId = 0;
+let publicLastUpdateId = 0;
+
+console.log("🤖 Double-Bot Security & Privacy System Chalu Ho Gaya Hai!");
+
+// --- ADMIN BOT KAA KAAM (Privacy Lock + Post Generator) ---
+async function pollAdmin() {
     try {
-        const res = await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`);
+        const res = await fetch(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/getUpdates?offset=${adminLastUpdateId + 1}&timeout=30`);
         const data = await res.json();
         if (data.ok && data.result.length > 0) {
             for (const update of data.result) {
-                lastUpdateId = update.update_id;
-                await processMessage(update.message);
+                adminLastUpdateId = update.update_id;
+                await processAdminMessage(update.message);
             }
         }
     } catch (e) {}
-    setTimeout(poll, 1000);
+    setTimeout(pollAdmin, 1000);
 }
 
-async function processMessage(msg) {
+async function processAdminMessage(msg) {
+    if (!msg || msg.chat.type !== 'private') return;
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    let text = msg.text || msg.caption || '';
+
+    // 🛡️ STRICT PRIVACY & SECURITY CHECK (Sirf Boss/Admin use kar sakta hai)
+    if (userId !== MY_TELEGRAM_ID) {
+        await sendMessage(ADMIN_BOT_TOKEN, chatId, "⛔ **Access Denied!**\n\nYeh ek private Admin Bot hai. Aapko ise use karne ki permission nahi hai.");
+        return;
+    }
+
+    const tgLinkRegex = /https:\/\/t\.me\/(?:c\/\d+\/|[a-zA-Z0-9_]+\/)(\d+)/;
+    const match = text.match(tgLinkRegex);
+
+    if (match) {
+        const fileMsgId = match[1]; 
+        const secretBotLink = `https://telegram.me/${PUBLIC_BOT_USERNAME.trim()}?start=${fileMsgId}`;
+
+        try {
+            const shortRes = await fetch(`https://shrinkme.io/api?api=${SHORTENER_API}&url=${encodeURIComponent(secretBotLink)}`);
+            const shortData = await shortRes.json();
+            
+            if (shortData.status === 'success') {
+                const finalLink = shortData.shortenedUrl;
+                text = text.replace(match[0], ''); 
+                
+                const replyMarkup = { inline_keyboard: [[{ text: '📥 Download Mod APK', url: finalLink }]] };
+
+                let postRes;
+                if (msg.photo) {
+                    const fileId = msg.photo[msg.photo.length - 1].file_id;
+                    postRes = await sendPhoto(ADMIN_BOT_TOKEN, MAIN_CHANNEL_ID, fileId, text, replyMarkup);
+                } else {
+                    postRes = await sendMessage(ADMIN_BOT_TOKEN, MAIN_CHANNEL_ID, text, replyMarkup);
+                }
+                
+                if(postRes.ok) {
+                    sendMessage(ADMIN_BOT_TOKEN, chatId, "🎉 Post Successfully Main Channel par bhej di gayi hai!");
+                } else {
+                    sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ Main channel par post bhejte waqt error aaya.");
+                }
+            }
+        } catch (e) {
+            sendMessage(ADMIN_BOT_TOKEN, chatId, "❌ Link convert karne mein error aaya.");
+        }
+    } else {
+        if (text === '/start') {
+            sendMessage(ADMIN_BOT_TOKEN, chatId, "👋 **Welcome Boss!**\n\nAdmin Security Panel active hai. Database channel se file ka link copy karke yahan bhejein!");
+        } else {
+            sendMessage(ADMIN_BOT_TOKEN, chatId, "⚠️ Kripya Database Channel se file ka valid Telegram link bhejें।");
+        }
+    }
+}
+
+// --- PUBLIC BOT KAA KAAM (Sirf File Dene Ke Liye) ---
+async function pollPublic() {
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/getUpdates?offset=${publicLastUpdateId + 1}&timeout=30`);
+        const data = await res.json();
+        if (data.ok && data.result.length > 0) {
+            for (const update of data.result) {
+                publicLastUpdateId = update.update_id;
+                await processPublicMessage(update.message);
+            }
+        }
+    } catch (e) {}
+    setTimeout(pollPublic, 1000);
+}
+
+async function processPublicMessage(msg) {
     if (!msg || msg.chat.type !== 'private') return;
     const chatId = msg.chat.id;
     const text = msg.text || '';
@@ -35,31 +118,37 @@ async function processMessage(msg) {
     if (text.startsWith('/start ')) {
         const fileMsgId = text.split(' ')[1];
         if (fileMsgId) {
-            // User ko warning dena ki file delete ho jayegi
-            await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: "⏳ File dhoondh raha hoon...\n\n⚠️ *Dhyan rahe:* Yeh file 24 ghante mein aapki chat se automatically delete ho jayegi!", parse_mode: 'Markdown' }) });
-            
-            // File bhejna aur Message ID save karna
-            const copyRes = await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/copyMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, from_chat_id: DB_CHANNEL_ID, message_id: fileMsgId }) });
-            const copyData = await copyRes.json();
-
-            // Auto-Delete Time Bomb Logic
-            if(copyData.ok) {
-                const sentMsgId = copyData.result.message_id;
-                
-                // 24 Ghante (24 * 60 * 60 * 1000 = 86400000 milliseconds) ka Timer
-                setTimeout(async () => {
-                    await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/deleteMessage`, { 
-                        method: 'POST', 
-                        headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ chat_id: chatId, message_id: sentMsgId }) 
-                    });
-                }, 86400000); 
+            await sendMessage(PUBLIC_BOT_TOKEN, chatId, "⏳ Aapki file dhoondh raha hoon...");
+            const res = await copyMessage(PUBLIC_BOT_TOKEN, chatId, DB_CHANNEL_ID, fileMsgId);
+            if (!res.ok) {
+                await sendMessage(PUBLIC_BOT_TOKEN, chatId, "❌ File nahi mili ya link expired ho gaya hai.");
             }
         }
         return;
     }
+
     if (text === '/start') {
-        await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: "👋 Main ek File Provider Bot hoon. Channel ke link se file lijiye." }) });
+        await sendMessage(PUBLIC_BOT_TOKEN, chatId, "👋 Welcome! Kripya hamare Channel ke link ke through aayein.");
     }
 }
-poll();
+
+// --- TELEGRAM HELPER APIs ---
+async function sendMessage(token, chat_id, text, reply_markup = null) {
+    const body = { chat_id, text, parse_mode: 'Markdown' };
+    if (reply_markup) body.reply_markup = reply_markup;
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return await res.json();
+}
+async function sendPhoto(token, chat_id, photo, caption, reply_markup) {
+    const body = { chat_id, photo, caption, reply_markup, parse_mode: 'Markdown' };
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return await res.json();
+}
+async function copyMessage(token, chat_id, from_chat_id, message_id) {
+    const body = { chat_id, from_chat_id, message_id };
+    const res = await fetch(`https://api.telegram.org/bot${token}/copyMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return await res.json();
+}
+
+pollAdmin();
+pollPublic();
