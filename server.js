@@ -1,5 +1,7 @@
 const http = require('http');
+const https = require('https');
 
+// 24x7 Uptime Web Server
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.write("Bot is alive and running 24x7!");
@@ -22,37 +24,60 @@ const SHORTENER_API = '0d5b84a85b367dce300ef3f2be81b302202e9803';
 let adminLastUpdateId = 0;
 let publicLastUpdateId = 0;
 
-console.log("🤖 Bot polling started successfully!");
+console.log("🤖 HTTPS-Based Bot Polling Started!");
 
-// --- HELPER FUNCTIONS ---
-async function sendMsg(token, chatId, text, markup = null) {
-    try {
-        const body = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
-        if (markup) body.reply_markup = markup;
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+// Native HTTPS Request Helper function
+function telegramApi(token, method, data = {}) {
+    return new Promise((resolve, reject) => {
+        const dataString = JSON.stringify(data);
+        const options = {
+            hostname: 'api.telegram.org',
+            path: `/bot${token}/${method}`,
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(dataString)
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let responseData = '';
+            res.on('data', (chunk) => { responseData += chunk; });
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(responseData));
+                } catch (e) {
+                    reject(e);
+                }
+            });
         });
-    } catch (e) {}
+
+        req.on('error', (err) => { reject(err); });
+        req.write(dataString);
+        req.end();
+    });
 }
 
-async function sendPhotoMsg(token, chatId, photo, caption, markup) {
-    try {
-        const body = { chat_id: chatId, photo: photo, caption: caption, parse_mode: 'Markdown', reply_markup: markup };
-        await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-    } catch (e) {}
+function getUpdates(token, offset) {
+    return new Promise((resolve, reject) => {
+        https.get(`https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=30`, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }).on('error', (err) => { reject(err); });
+    });
 }
 
 // --- ADMIN BOT POLLING ---
 async function pollAdmin() {
     try {
-        const res = await fetch(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/getUpdates?offset=${adminLastUpdateId + 1}&timeout=30`);
-        const data = await res.json();
+        const data = await getUpdates(ADMIN_BOT_TOKEN, adminLastUpdateId + 1);
         if (data.ok && data.result.length > 0) {
             for (const update of data.result) {
                 adminLastUpdateId = update.update_id;
@@ -63,47 +88,49 @@ async function pollAdmin() {
                 const userId = msg.from.id;
                 const text = msg.text || msg.caption || '';
 
-                // Privacy Check
                 if (userId !== MY_TELEGRAM_ID) {
-                    await sendMsg(ADMIN_BOT_TOKEN, chatId, "⛔ **Access Denied!** Yeh ek private Admin Bot hai.");
+                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⛔ **Access Denied!** Yeh ek private Admin Bot hai." });
                     continue;
                 }
 
                 if (text === '/start') {
-                    await sendMsg(ADMIN_BOT_TOKEN, chatId, "👋 **Welcome Boss!**\n\nDatabase channel se file ka link copy karke yahan bhejein!");
+                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 **Welcome Boss!**\n\nDatabase channel se file ka link copy karke yahan bhejein!", parse_mode: 'Markdown' });
                     continue;
                 }
 
-                // Link matcher for Telegram messages
                 const match = text.match(/https:\/\/t\.me\/(?:c\/(\d+)\/([^\s]+)|([a-zA-Z0-9_]+)\/(\d+))/);
                 if (match) {
                     const fileMsgId = match[2] || match[4];
                     const secretBotLink = `https://telegram.me/${PUBLIC_BOT_USERNAME.trim()}?start=${fileMsgId}`;
 
-                    try {
-                        const shortRes = await fetch(`https://shrinkme.io/api?api=${SHORTENER_API}&url=${encodeURIComponent(secretBotLink)}`);
-                        const shortData = await shortRes.json();
-                        
-                        if (shortData.status === 'success') {
-                            const finalLink = shortData.shortenedUrl;
-                            const cleanText = text.replace(match[0], '').trim();
-                            const markup = { inline_keyboard: [[{ text: '📥 Download Mod APK', url: finalLink }]] };
+                    https.get(`https://shrinkme.io/api?api=${SHORTENER_API}&url=${encodeURIComponent(secretBotLink)}`, (sRes) => {
+                        let sData = '';
+                        sRes.on('data', (chunk) => { sData += chunk; });
+                        sRes.on('end', async () => {
+                            try {
+                                const shortData = JSON.parse(sData);
+                                if (shortData.status === 'success') {
+                                    const finalLink = shortData.shortenedUrl;
+                                    const cleanText = text.replace(match[0], '').trim();
+                                    const markup = { inline_keyboard: [[{ text: '📥 Download Mod APK', url: finalLink }]] };
 
-                            if (msg.photo) {
-                                const photoId = msg.photo[msg.photo.length - 1].file_id;
-                                await sendPhotoMsg(ADMIN_BOT_TOKEN, MAIN_CHANNEL_ID, photoId, cleanText, markup);
-                            } else {
-                                await sendMsg(ADMIN_BOT_TOKEN, MAIN_CHANNEL_ID, cleanText, markup);
+                                    if (msg.photo) {
+                                        const photoId = msg.photo[msg.photo.length - 1].file_id;
+                                        await telegramApi(ADMIN_BOT_TOKEN, 'sendPhoto', { chat_id: MAIN_CHANNEL_ID, photo: photoId, caption: cleanText, parse_mode: 'Markdown', reply_markup: markup });
+                                    } else {
+                                        await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: MAIN_CHANNEL_ID, text: cleanText, parse_mode: 'Markdown', reply_markup: markup });
+                                    }
+                                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "🎉 Post Successfully Main Channel par bhej di gayi hai!" });
+                                } else {
+                                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "❌ ShrinkMe API Error: Link short nahi ho paya." });
+                                }
+                            } catch (err) {
+                                await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "❌ Error processing short link." });
                             }
-                            await sendMsg(ADMIN_BOT_TOKEN, chatId, "🎉 Post Successfully Main Channel par bhej di gayi hai!");
-                        } else {
-                            await sendMsg(ADMIN_BOT_TOKEN, chatId, "❌ ShrinkMe API Error: Link short nahi ho paya.");
-                        }
-                    } catch (err) {
-                        await sendMsg(ADMIN_BOT_TOKEN, chatId, "❌ Network Error while shortening link.");
-                    }
+                        });
+                    });
                 } else {
-                    await sendMsg(ADMIN_BOT_TOKEN, chatId, "⚠️ Kripya valid Telegram link bhejein.");
+                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⚠️ Kripya valid Telegram link bhejein." });
                 }
             }
         }
@@ -114,8 +141,7 @@ async function pollAdmin() {
 // --- PUBLIC BOT POLLING ---
 async function pollPublic() {
     try {
-        const res = await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/getUpdates?offset=${publicLastUpdateId + 1}&timeout=30`);
-        const data = await res.json();
+        const data = await getUpdates(PUBLIC_BOT_TOKEN, publicLastUpdateId + 1);
         if (data.ok && data.result.length > 0) {
             for (const update of data.result) {
                 publicLastUpdateId = update.update_id;
@@ -128,19 +154,11 @@ async function pollPublic() {
                 if (text.startsWith('/start ')) {
                     const fileMsgId = text.split(' ')[1];
                     if (fileMsgId) {
-                        await sendMsg(PUBLIC_BOT_TOKEN, chatId, "⏳ Aapki file bhej raha hoon...");
-                        try {
-                            await fetch(`https://api.telegram.org/bot${PUBLIC_BOT_TOKEN}/copyMessage`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ chat_id: chatId, from_chat_id: DB_CHANNEL_ID, message_id: fileMsgId })
-                            });
-                        } catch (err) {
-                            await sendMsg(PUBLIC_BOT_TOKEN, chatId, "❌ File bhejane mein error aaya.");
-                        }
+                        await telegramApi(PUBLIC_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⏳ Aapki file bhej raha hoon..." });
+                        await telegramApi(PUBLIC_BOT_TOKEN, 'copyMessage', { chat_id: chatId, from_chat_id: DB_CHANNEL_ID, message_id: fileMsgId });
                     }
                 } else if (text === '/start') {
-                    await sendMsg(PUBLIC_BOT_TOKEN, chatId, "👋 Welcome! Kripya Channel ke link ke through aayein.");
+                    await telegramApi(PUBLIC_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 Welcome! Kripya Channel ke link ke through aayein." });
                 }
             }
         }
