@@ -15,8 +15,6 @@ const PUBLIC_BOT_TOKEN = '9133978108:AAEAfzcrSJ9IHXqStjrPvYjDAEWsZiV5-qM';
 const MAIN_CHANNEL_ID = '-1004339756508'; 
 const DB_CHANNEL_ID = '-1003963018645'; 
 
-const MY_TELEGRAM_ID = 5850723556; // Aapki Telegram Numeric ID
-
 const PUBLIC_BOT_USERNAME = 'ApkFileStorezbot'; 
 const SHORTENER_API = '0d5b84a85b367dce300ef3f2be81b302202e9803';
 // ============================================================
@@ -24,9 +22,8 @@ const SHORTENER_API = '0d5b84a85b367dce300ef3f2be81b302202e9803';
 let adminLastUpdateId = 0;
 let publicLastUpdateId = 0;
 
-console.log("🤖 HTTPS-Based Bot Polling Started!");
+console.log("🤖 HTTPS-Based Bot Polling Started (Privacy Lock Removed)!");
 
-// Native HTTPS Request Helper function
 function telegramApi(token, method, data = {}) {
     return new Promise((resolve, reject) => {
         const dataString = JSON.stringify(data);
@@ -85,13 +82,7 @@ async function pollAdmin() {
                 if (!msg || msg.chat.type !== 'private') continue;
                 
                 const chatId = msg.chat.id;
-                const userId = msg.from.id;
                 const text = msg.text || msg.caption || '';
-
-                if (userId !== MY_TELEGRAM_ID) {
-                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⛔ **Access Denied!** Yeh ek private Admin Bot hai." });
-                    continue;
-                }
 
                 if (text === '/start') {
                     await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 **Welcome Boss!**\n\nDatabase channel se file ka link copy karke yahan bhejein!", parse_mode: 'Markdown' });
