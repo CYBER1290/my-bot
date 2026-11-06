@@ -20,8 +20,6 @@ const MY_TELEGRAM_ID = 5850723556;
 
 const PUBLIC_BOT_USERNAME = 'ApkFileStorezbot'; 
 const SHORTENER_API = '0d5b84a85b367dce300ef3f2be81b302202e9803';
-
-// Aapki Auth Key / Gemini API Key
 const GEMINI_API_KEY = 'AQ.Ab8RN6LYTeW1io4qfEWTwwWU9au87YNfwz7EMoRQkNlBVJDrlg';
 // =========================================================================
 
@@ -30,7 +28,7 @@ let aiBotLastUpdateId = 0;
 let publicLastUpdateId = 0;
 const userStates = {};
 
-console.log("🤖 Ultimate All-in-One Bot System Started with Auth Key Integration!");
+console.log("🤖 Ultimate All-in-One Bot System Started Successfully!");
 
 function telegramApi(token, method, data = {}) {
     return new Promise((resolve, reject) => {
@@ -90,11 +88,10 @@ function shortenUrl(targetLink) {
     });
 }
 
-// Function to call Gemini API using Bearer Token (Auth Key format)
 function generateGeminiContent(promptText) {
     return new Promise((resolve) => {
         const dataString = JSON.stringify({
-            contents: [{ parts: [{ text: `Act as a professional viral video editor. For the following movie/anime, generate a catchy Viral Hook, Instagram/YouTube Shorts Caption, and popular hashtags: "${promptText}"` }] }]
+            contents: [{ parts: [{ text: `Act as a professional APK channel copywriter. For the following app/movie, generate clean catchy features, emojis, and hashtags: "${promptText}"` }] }]
         });
 
         const options = {
@@ -117,15 +114,15 @@ function generateGeminiContent(promptText) {
                     if (parsed.candidates && parsed.candidates[0].content) {
                         resolve(parsed.candidates[0].content.parts[0].text);
                     } else {
-                        resolve("❌ Gemini API se response nahi mila. Kripya response check karein.");
+                        resolve("❌ Gemini API response error.");
                     }
                 } catch (e) {
-                    resolve("❌ Error parsing Gemini response.");
+                    resolve("❌ Error parsing response.");
                 }
             });
         });
 
-        req.on('error', () => { resolve("❌ Network error connecting to Gemini API."); });
+        req.on('error', () => { resolve("❌ Network error connecting to Gemini."); });
         req.write(dataString);
         req.end();
     });
@@ -134,18 +131,22 @@ function generateGeminiContent(promptText) {
 async function publishToChannel(chatId, text, photoId, finalLink) {
     const markup = { inline_keyboard: [[{ text: '📥 Download Mod APK', url: finalLink }]] };
 
+    // Cleanup external links and add custom branding
+    let cleanText = text.replace(/(https?:\/\/)?(exmodz|getmodsapk|liteapks|modyolo|an1|softonic|hhr)\.[^\s]+/gi, '');
+    cleanText = cleanText.trim() + `\n\n====================\n✈️ Channel ➔ @EXMODS\n====================`;
+
     if (photoId) {
-        if (text.length > 1024) {
-            const firstPart = text.substring(0, 1024);
-            const secondPart = text.substring(1024);
+        if (cleanText.length > 1024) {
+            const firstPart = cleanText.substring(0, 1024);
+            const secondPart = cleanText.substring(1024);
 
             await telegramApi(ADMIN_BOT_TOKEN, 'sendPhoto', { chat_id: MAIN_CHANNEL_ID, photo: photoId, caption: firstPart, parse_mode: 'Markdown', reply_markup: markup });
             await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: MAIN_CHANNEL_ID, text: secondPart, parse_mode: 'Markdown' });
         } else {
-            await telegramApi(ADMIN_BOT_TOKEN, 'sendPhoto', { chat_id: MAIN_CHANNEL_ID, photo: photoId, caption: text, parse_mode: 'Markdown', reply_markup: markup });
+            await telegramApi(ADMIN_BOT_TOKEN, 'sendPhoto', { chat_id: MAIN_CHANNEL_ID, photo: photoId, caption: cleanText, parse_mode: 'Markdown', reply_markup: markup });
         }
     } else {
-        await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: MAIN_CHANNEL_ID, text: text, parse_mode: 'Markdown', reply_markup: markup });
+        await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: MAIN_CHANNEL_ID, text: cleanText, parse_mode: 'Markdown', reply_markup: markup });
     }
 
     await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "🎉 Post Successfully Main Channel par bhej di gayi hai!" });
@@ -181,13 +182,12 @@ async function pollAdmin() {
                             delete userStates[userId];
                             continue;
                         }
-                        let cleanText = state.text.replace(state.targetLink, '').trim();
-                        await publishToChannel(chatId, cleanText, state.photoId, finalLink);
+                        await publishToChannel(chatId, state.text, state.photoId, finalLink);
                         delete userStates[userId];
 
                     } else if (dataKey === 'use_custom') {
                         userStates[userId].step = 'waiting_for_custom_link';
-                        await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "✏️ Apna custom link bhejein:" });
+                        await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "✏️ Apna custom download link bhejein:" });
                     }
                     continue;
                 }
@@ -207,7 +207,7 @@ async function pollAdmin() {
 
                 if (text === '/start') {
                     delete userStates[userId];
-                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 **Welcome Boss!** Admin Bot ready hai.", parse_mode: 'Markdown' });
+                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 **Welcome Boss!** Admin Bot ready hai. Koi bhi APK post forward karein.", parse_mode: 'Markdown' });
                     continue;
                 }
 
@@ -220,13 +220,12 @@ async function pollAdmin() {
                         delete userStates[userId];
                         continue;
                     }
-                    let cleanText = state.text;
-                    if (state.targetLink) cleanText = cleanText.replace(state.targetLink, '').trim();
-                    await publishToChannel(chatId, cleanText, state.photoId, finalLink);
+                    await publishToChannel(chatId, state.text, state.photoId, finalLink);
                     delete userStates[userId];
                     continue;
                 }
 
+                // Sabhi http/https links ko detect karega (Chahe exmodz ho ya koi bhi website)
                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                 const matches = text.match(urlRegex);
 
@@ -247,12 +246,12 @@ async function pollAdmin() {
 
                     await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', {
                         chat_id: chatId,
-                        text: `🔍 **Link Detected:** \`${targetLink}\``,
+                        text: `🔍 **Link Detected:** \`${targetLink}\`\n\nKiska short link banana hai?`,
                         parse_mode: 'Markdown',
                         reply_markup: keyboard
                     });
                 } else {
-                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⚠️ Koi valid link nahi mila." });
+                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⚠️ Is message mein koi link nahi mila. Kripya valid post forward karein." });
                 }
             }
         }
@@ -283,11 +282,11 @@ async function pollAiBot() {
                 if (text === '/start') {
                     await telegramApi(AI_BOT_TOKEN, 'sendMessage', { 
                         chat_id: chatId, 
-                        text: "🎬 **AI Viral Hook & Caption Generator**\n\nMovie ya Anime ka naam bhejein!", 
+                        text: "🎬 **AI Content & Hook Generator**\n\nApp ya Movie ka naam bhejein!", 
                         parse_mode: 'Markdown' 
                     });
                 } else {
-                    await telegramApi(AI_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⏳ Generating viral hooks..." });
+                    await telegramApi(AI_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⏳ Generating content..." });
                     const aiResult = await generateGeminiContent(text);
                     await telegramApi(AI_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: aiResult, parse_mode: 'Markdown' });
                 }
