@@ -91,7 +91,7 @@ function shortenUrl(targetLink) {
 function generateGeminiContent(promptText) {
     return new Promise((resolve) => {
         const dataString = JSON.stringify({
-            contents: [{ parts: [{ text: `Act as a professional APK channel copywriter. For the following app/movie, generate clean catchy features, emojis, and hashtags: "${promptText}"` }] }]
+            contents: [{ parts: [{ text: `Act as a professional APK channel copywriter. For the following app, generate clean catchy features and emojis: "${promptText}"` }] }]
         });
 
         const options = {
@@ -176,7 +176,7 @@ async function pollAdmin() {
                     }
 
                     if (dataKey === 'use_original') {
-                        const finalLink = await shortenUrl(state.targetLink);
+                        const finalLink = state.targetLink ? await shortenUrl(state.targetLink) : `https://t.me/${PUBLIC_BOT_USERNAME}`;
                         if (!finalLink) {
                             await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "❌ ShrinkMe API Error." });
                             delete userStates[userId];
@@ -207,7 +207,7 @@ async function pollAdmin() {
 
                 if (text === '/start') {
                     delete userStates[userId];
-                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 **Welcome Boss!** Admin Bot ready hai. Koi bhi APK post forward karein.", parse_mode: 'Markdown' });
+                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "👋 **Welcome Boss!** Admin Bot ready hai. Koi bhi post forward karein.", parse_mode: 'Markdown' });
                     continue;
                 }
 
@@ -225,34 +225,29 @@ async function pollAdmin() {
                     continue;
                 }
 
-                // Sabhi http/https links ko detect karega (Chahe exmodz ho ya koi bhi website)
+                // Links ko detect karna (Agar message mein ho toh theek, nahi toh bypass karke proceed karega)
                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                 const matches = text.match(urlRegex);
+                const targetLink = matches && matches.length > 0 ? matches[0] : null;
+                const photoId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : null;
 
-                if (matches && matches.length > 0) {
-                    const targetLink = matches[0];
-                    const photoId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : null;
+                userStates[userId] = { text: text, photoId: photoId, targetLink: targetLink, step: 'choose_link_type' };
 
-                    userStates[userId] = { text: text, photoId: photoId, targetLink: targetLink, step: 'choose_link_type' };
-
-                    const keyboard = {
-                        inline_keyboard: [
-                            [
-                                { text: '🔗 Use Message Link', callback_data: 'use_original' },
-                                { text: '✏️ Enter Custom Link', callback_data: 'use_custom' }
-                            ]
+                const keyboard = {
+                    inline_keyboard: [
+                        [
+                            { text: '🔗 Use Link / Default', callback_data: 'use_original' },
+                            { text: '✏️ Enter Custom Link', callback_data: 'use_custom' }
                         ]
-                    };
+                    ]
+                };
 
-                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', {
-                        chat_id: chatId,
-                        text: `🔍 **Link Detected:** \`${targetLink}\`\n\nKiska short link banana hai?`,
-                        parse_mode: 'Markdown',
-                        reply_markup: keyboard
-                    });
-                } else {
-                    await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "⚠️ Is message mein koi link nahi mila. Kripya valid post forward karein." });
-                }
+                await telegramApi(ADMIN_BOT_TOKEN, 'sendMessage', {
+                    chat_id: chatId,
+                    text: targetLink ? `🔍 **Link Detected:** \`${targetLink}\`` : `⚠️ Message mein koi direct link nahi mila, par post ready hai!`,
+                    parse_mode: 'Markdown',
+                    reply_markup: keyboard
+                });
             }
         }
     } catch (e) {}
